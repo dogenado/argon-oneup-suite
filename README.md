@@ -83,6 +83,10 @@ ENABLE_I2C=1
 
 # Apply Argon ONE UP 4-stage quiet blower fan curve (40C/50C/60C/70C with 5C hysteresis)
 ENABLE_FAN_CURVE=1
+
+# Power down the unused onboard CM5 Ethernet PHY (~300 mW saving).
+# Set to 0 to re-enable eth0; `sudo argon-essentials-apply` reverses the change.
+DISABLE_UNUSED_ETHERNET=1
 ```
 
 Apply any changes instantly without rebooting:
@@ -177,6 +181,10 @@ cd argon-oneup-suite
 
 * Core packages are generated in `dist/*.deb`.
 * Optional desktop widgets and standby managers are generated in `dist/extras/*.deb`.
+* The prebuilt `argon-wfplug-batt` `libbatt.so` is checked against
+  `libbatt.so.sha256` on every build. To rebuild it from source, set
+  `REBUILD_LIBBATT=1` and point `WF_PANEL_PI_SRC` at a `wf-panel-pi` checkout
+  (see `extras/argon-wfplug-batt/usr/src/wfplug-batt/README.md`).
 
 ---
 
@@ -192,4 +200,7 @@ Issues discovered and fixed during the development of this suite have been contr
 
 ## 📄 License
 
-Released under the [MIT License](LICENSE) (kernel modules under `GPL-2.0-only`). Free and open-source for the Raspberry Pi and Linux community.
+Released under the [MIT License](LICENSE). Kernel modules are licensed under
+`GPL-2.0-only`, and the wf-panel-pi battery widget source retains its upstream
+Raspberry Pi copyright. See [`THIRD_PARTY.md`](THIRD_PARTY.md) for details.
+Free and open-source for the Raspberry Pi and Linux community.

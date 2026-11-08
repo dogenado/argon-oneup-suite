@@ -13,4 +13,6 @@ Description: Raspberry Pi CM5 / CM5 Lite Empty MicroSD Slot Shutdown Delay Fix
  Patches the BCM2712 SDHCI 100kHz hardware timeout bug in mmc_rescan freqs[],
  installs cm5-sdcard-fast device-tree overlay to bypass SDIO/eMMC probes, and
  registers an automatic kernel postinst hook to persist across all apt upgrades.
+ Stores a per-kernel recovery record before patching, so --restore can always
+ undo the change even if the kernel layout differs later.
  Keeps microSD hotplugging and booting 100% intact.

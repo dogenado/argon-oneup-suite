@@ -9,5 +9,6 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
             echo "[cm5-mmc-fix] Removed dtoverlay=cm5-sdcard-fast from $d/config.txt"
         fi
     done
+    rm -rf /var/lib/cm5-mmc-fix
 fi
 exit 0

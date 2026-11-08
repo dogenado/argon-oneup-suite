@@ -5,3 +5,6 @@ dist/
 __pycache__/
 *.pyc
 public/
+# local wfplug-batt build artifacts
+extras/argon-wfplug-batt/usr/src/wfplug-batt/*.o
+extras/argon-wfplug-batt/usr/src/wfplug-batt/libbatt.so

@@ -12,6 +12,7 @@ import sys
 import time
 import glob
 import shutil
+import signal
 import argparse
 import subprocess
 from datetime import datetime
@@ -25,6 +26,14 @@ REPORT_FILE = "/var/log/argon-power-report.md"
 
 CELLS_IN_SERIES = 3
 PACK_WH = 53.28
+
+# Cleanup state. The benchmark changes governors, cgroups, USB power, radio
+# power saving and display state; an interrupt must undo all of it.
+_stress_proc = None
+_orig_gov = None
+_created_state_file = False
+_benchmark_active = False
+_cleanup_done = False
 
 def read_file(path, default=None):
     try:
@@ -298,7 +307,60 @@ def compute_stats(samples):
         "est_battery_hours": est_hours
     }
 
+def emergency_cleanup():
+    """Restore system state after an interrupted or failed benchmark."""
+    global _cleanup_done, _stress_proc, _created_state_file
+    if _cleanup_done or not _benchmark_active:
+        return
+    _cleanup_done = True
+    print("\n[!] Benchmark abgebrochen - stelle Systemzustand wieder her...", flush=True)
+
+    if _stress_proc is not None:
+        try:
+            _stress_proc.terminate()
+            _stress_proc.wait(timeout=2)
+        except Exception:
+            try:
+                _stress_proc.kill()
+            except Exception:
+                pass
+        if shutil.which("stress-ng"):
+            subprocess.run(["pkill", "-9", "-f", "stress-ng"], check=False,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _stress_proc = None
+
+    for restore in (
+        lambda: set_cgroups_frozen(freeze=False),
+        lambda: set_keyboard_power(enable=True),
+        lambda: set_fan_sleep_mode(False),
+        lambda: set_wifi_power_save(False),
+        lambda: set_dpms("on"),
+    ):
+        try:
+            restore()
+        except Exception:
+            pass
+
+    if _orig_gov:
+        try:
+            set_cpufreq_governor(_orig_gov)
+        except Exception:
+            pass
+
+    if _created_state_file and os.path.exists("/run/rpi-suspend.state"):
+        try:
+            os.remove("/run/rpi-suspend.state")
+        except Exception:
+            pass
+
+
+def _handle_signal(signum, frame):
+    raise KeyboardInterrupt(f"signal {signum}")
+
+
 def run_benchmark(duration=60):
+    global _stress_proc, _orig_gov, _created_state_file, _benchmark_active
+
     if os.geteuid() != 0:
         print("[!] Bitte mit 'sudo argon-power-bench' ausführen.")
         sys.exit(1)
@@ -326,6 +388,7 @@ def run_benchmark(duration=60):
           f"(Pack: {initial['pack_v']:.2f}V, Einzelzelle: {initial['cell_v']:.3f}V, {initial['status']})")
 
     all_samples = []
+    _benchmark_active = True
 
     # -------------------------------------------------------------
     # PHASE 1: LEERLAUF (IDLE) - 60 SEKUNDEN
@@ -344,12 +407,15 @@ def run_benchmark(duration=60):
     print("Starte 4-Kern stress-ng (Matrix-Multiplikation + RAM-Stress)...")
 
     orig_gov = read_file("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", "schedutil")
+    _orig_gov = orig_gov
     had_state_file = os.path.exists("/run/rpi-suspend.state")
     try:
         with open("/run/rpi-suspend.state", "w") as f:
             f.write("benchmark\n")
     except Exception:
         pass
+    else:
+        _created_state_file = not had_state_file
 
     # Ensure dynamic governor & full 2.8 GHz max frequency for FullLoad test
     set_cpufreq_governor("schedutil")
@@ -364,6 +430,7 @@ def run_benchmark(duration=60):
         stress_cmd,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
+    _stress_proc = stress_proc
 
     time.sleep(3) # Ramp-up to 2.8 GHz
     load_samples = sample_period("FullLoad", duration)
@@ -378,6 +445,7 @@ def run_benchmark(duration=60):
             pass
         if shutil.which("stress-ng"):
             subprocess.run(["pkill", "-9", "-f", "stress-ng"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _stress_proc = None
     print("Volllast-Phase abgeschlossen, CPU kühlt ab...")
     time.sleep(3)
 
@@ -476,6 +544,7 @@ def run_benchmark(duration=60):
     report = generate_report(idle_stats, load_stats, sleep_stats)
     print("\n" + report)
     save_results(all_samples, report)
+    _benchmark_active = False
 
 def generate_report(idle, load, sleep):
     lines = []
@@ -518,7 +587,21 @@ def main():
     parser = argparse.ArgumentParser(description="Argon ONE UP Power Benchmarking & Standby Logger")
     parser.add_argument("--duration", type=int, default=60, help="Dauer pro Phase in Sekunden (Standard: 60s)")
     args = parser.parse_args()
-    run_benchmark(args.duration)
+
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, _handle_signal)
+        except (AttributeError, OSError, ValueError):
+            pass
+
+    try:
+        run_benchmark(args.duration)
+    except KeyboardInterrupt:
+        print("\n[!] Benchmark durch Benutzer/Signal abgebrochen.", file=sys.stderr)
+        emergency_cleanup()
+        sys.exit(130)
+    finally:
+        emergency_cleanup()
 
 if __name__ == "__main__":
     main()

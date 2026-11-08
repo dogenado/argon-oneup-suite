@@ -60,6 +60,7 @@ jobs:
           bash -n src/argon-oneup-backlight/usr/sbin/argon-backlight-init
           bash -n extras/ksystemstats-rpi5-fix/usr/bin/ksystemstats-cpuinfo-gen
           sh -n src/argon-oneup-essentials/usr/sbin/argon-essentials-apply
+          sh -n src/argon-oneup-essentials/usr/sbin/argon-unused-ethernet
 
       - name: Build Debian packages
         run: |

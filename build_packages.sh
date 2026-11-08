@@ -19,9 +19,11 @@ echo "=== Building Argon ONE UP Core Debian Packages ==="
 
 if [ "$(uname -m)" = "aarch64" ]; then
     CC_BIN="gcc"
+    CXX_BIN="g++"
     STRIP_BIN="strip"
 else
     CC_BIN="aarch64-linux-gnu-gcc"
+    CXX_BIN="aarch64-linux-gnu-g++"
     STRIP_BIN="aarch64-linux-gnu-strip"
 fi
 
@@ -76,6 +78,53 @@ else
     echo "=== Release Build: Clean versions from control files (Tag: ${EXACT_TAG:-none}) ==="
 fi
 
+install_copyright() {
+    local pkg_dir="$1"
+    local pkg="$2"
+    local doc_dir="${pkg_dir}/usr/share/doc/${pkg}"
+
+    [ -f "${doc_dir}/copyright" ] && return 0
+    mkdir -p "${doc_dir}"
+    cat > "${doc_dir}/copyright" <<'EOF'
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: argon-oneup-suite
+Source: https://github.com/GamingTux/argon-oneup-suite
+
+Files: *
+Copyright: 2026 GamingTux
+License: MIT
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: src/argon-oneup-battery/usr/src/oneUpPower-*
+Copyright: Jeff Curless and contributors
+License: GPL-2.0-only
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 can be found in /usr/share/common-licenses/GPL-2.
+
+Files: extras/argon-wfplug-batt/usr/src/wfplug-batt/*
+Copyright: 2018-2025 Raspberry Pi
+Comment: Derived from the Raspberry Pi wf-panel-pi/pplug-batt battery widget.
+ These files carry an "All rights reserved" notice and are not covered by
+ the repository's MIT license. See THIRD_PARTY.md.
+EOF
+}
+
 package_dir() {
     local src_path="$1"
     local dest_dir="$2"
@@ -93,6 +142,7 @@ package_dir() {
     local stage_dir
     stage_dir=$(mktemp -d)
     cp -a "${src_path}" "${stage_dir}/${pkg}"
+    install_copyright "${stage_dir}/${pkg}" "${pkg}"
 
     if [ -n "${GIT_SUFFIX}" ]; then
         sed -i "s/^Version: .*/Version: ${final_ver}/" "${stage_dir}/${pkg}/DEBIAN/control"
@@ -151,6 +201,53 @@ fi
 
 if [ "${RPI_SUSPEND_SYNCED}" = false ]; then
     echo "WARNING: Could not fetch rpi-suspend package. Please ensure internet access or provide rpi-suspend.deb."
+fi
+
+echo "=== Rebuilding / Verifying wf-panel-pi battery widget ==="
+LIBBATT_DIR="${EXTRAS_SRC_DIR}/argon-wfplug-batt/usr/share/argon-oneup/wf-panel-pi"
+LIBBATT_BIN="${LIBBATT_DIR}/libbatt.so"
+LIBBATT_SUM="${LIBBATT_DIR}/libbatt.so.sha256"
+LIBBATT_SRC="${EXTRAS_SRC_DIR}/argon-wfplug-batt/usr/src/wfplug-batt"
+
+if [ -f "${LIBBATT_BIN}" ] && [ -f "${LIBBATT_SUM}" ]; then
+    ( cd "${LIBBATT_DIR}" && sha256sum -c "$(basename "${LIBBATT_SUM}")" ) || {
+        echo "ERROR: ${LIBBATT_BIN} does not match its recorded SHA256." >&2
+        exit 1
+    }
+fi
+
+if [ "${REBUILD_LIBBATT:-0}" = "1" ]; then
+    WF_PANEL_PI_SRC="${WF_PANEL_PI_SRC:-${REPO_DIR}/../wf-panel-pi}"
+    WF_PANEL_PI_INC="${WF_PANEL_PI_SRC}/src/wf-panel-pi"
+    [ -f "${WF_PANEL_PI_INC}/plugin.h" ] || WF_PANEL_PI_INC="${WF_PANEL_PI_SRC}/src"
+    if [ ! -f "${WF_PANEL_PI_INC}/plugin.h" ] || [ ! -f "${WF_PANEL_PI_INC}/widget.hpp" ]; then
+        echo "ERROR: REBUILD_LIBBATT=1 but wf-panel-pi headers were not found in ${WF_PANEL_PI_SRC}." >&2
+        echo "       Set WF_PANEL_PI_SRC to a wf-panel-pi source tree." >&2
+        exit 1
+    fi
+    if ! pkg-config --exists gtkmm-3.0; then
+        echo "ERROR: REBUILD_LIBBATT=1 but the gtkmm-3.0 development files are missing." >&2
+        exit 1
+    fi
+    if ! pkg-config --exists gtk-layer-shell-0; then
+        echo "ERROR: REBUILD_LIBBATT=1 but the gtk-layer-shell development files are missing." >&2
+        exit 1
+    fi
+    make -C "${LIBBATT_SRC}" clean all \
+        WF_PANEL_PI_SRC="${WF_PANEL_PI_SRC}" WF_PANEL_PI_INC="${WF_PANEL_PI_INC}" \
+        CC="${CC_BIN}" CXX="${CXX_BIN}"
+    cp -f "${LIBBATT_SRC}/libbatt.so" "${LIBBATT_BIN}"
+    "${STRIP_BIN}" "${LIBBATT_BIN}" 2>/dev/null || true
+    if [ "${UPDATE_LIBBATT_SHA:-0}" = "1" ]; then
+        ( cd "${LIBBATT_DIR}" && sha256sum libbatt.so > libbatt.so.sha256 )
+    else
+        ( cd "${LIBBATT_DIR}" && sha256sum -c libbatt.so.sha256 ) || {
+            echo "WARNING: rebuilt libbatt.so differs from the recorded SHA256." >&2
+            echo "         Re-run with UPDATE_LIBBATT_SHA=1 to accept the new binary." >&2
+        }
+    fi
+else
+    echo "Using verified prebuilt libbatt.so (set REBUILD_LIBBATT=1 to rebuild from source)."
 fi
 
 echo "=== Building Argon ONE UP Extras (Optional Fixes, Standby, Widgets & Applets) ==="

@@ -11,13 +11,73 @@ import os
 import sys
 import glob
 import gzip
+import json
 import shutil
 import struct
+import hashlib
 import tempfile
 import argparse
 
 OLD_FREQS = struct.pack("<IIII", 400000, 300000, 200000, 100000)
 NEW_FREQS = struct.pack("<IIII", 400000, 400000, 400000, 400000)
+
+# Each patched kernel gets a small recovery record (path, offset, original
+# bytes). This makes --restore independent of the current mmc_rescan layout and
+# lets us roll back immediately if a write cannot be verified.
+STATE_DIR = "/var/lib/cm5-mmc-fix/kernels"
+
+
+def _record_path(kernel_path):
+    digest = hashlib.sha256(os.path.abspath(kernel_path).encode()).hexdigest()
+    return os.path.join(STATE_DIR, digest + ".json")
+
+
+def write_record(kernel_path, offset):
+    record = {
+        "kernel": os.path.abspath(kernel_path),
+        "offset": offset,
+        "old": OLD_FREQS.hex(),
+        "new": NEW_FREQS.hex(),
+    }
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=".record-")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(record, f, sort_keys=True)
+                f.write("\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, _record_path(kernel_path))
+        except Exception:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise
+        return True
+    except Exception as e:
+        print(f"[cm5-mmc-fix] Error writing recovery record for {kernel_path}: {e}", file=sys.stderr)
+        return False
+
+
+def read_record(kernel_path):
+    try:
+        with open(_record_path(kernel_path), "r") as f:
+            record = json.load(f)
+        if record.get("kernel") != os.path.abspath(kernel_path):
+            return None
+        record["offset"] = int(record["offset"])
+        record["old"] = bytes.fromhex(record["old"])
+        record["new"] = bytes.fromhex(record["new"])
+        return record
+    except Exception:
+        return None
+
+
+def remove_record(kernel_path):
+    try:
+        os.remove(_record_path(kernel_path))
+    except OSError:
+        pass
 
 def find_kernels():
     paths = set(glob.glob("/boot/firmware/kernel*.img") +
@@ -73,25 +133,58 @@ def patch_kernel(path):
         return "READ_ERROR"
     if NEW_FREQS in data:
         return "ALREADY_PATCHED"
-    if data.count(OLD_FREQS) == 1:
-        patched = data.replace(OLD_FREQS, NEW_FREQS, 1)
-        if write_kernel_raw(path, patched, is_gz):
-            return "PATCHED"
+    if data.count(OLD_FREQS) != 1:
+        return "PATTERN_NOT_FOUND"
+    offset = data.find(OLD_FREQS)
+    # Write the recovery record first so a crash during the kernel write still
+    # leaves us a way back to the original bytes.
+    if not write_record(path, offset):
+        return "RECORD_ERROR"
+    patched = data[:offset] + NEW_FREQS + data[offset + len(OLD_FREQS):]
+    if not write_kernel_raw(path, patched, is_gz):
+        remove_record(path)
         return "WRITE_ERROR"
-    return "PATTERN_NOT_FOUND"
+    verify, _ = read_kernel_raw(path)
+    if verify is None or verify[offset:offset + len(NEW_FREQS)] != NEW_FREQS:
+        # Roll back from the copy we still hold in memory.
+        if write_kernel_raw(path, data, is_gz):
+            remove_record(path)
+            return "VERIFY_ERROR_ROLLED_BACK"
+        return "VERIFY_ERROR"
+    return "PATCHED"
+
 
 def restore_kernel(path):
     data, is_gz = read_kernel_raw(path)
     if data is None:
         return "READ_ERROR"
+
+    record = read_record(path)
+    if record:
+        offset, old, new = record["offset"], record["old"], record["new"]
+        if len(data) >= offset + len(new) and data[offset:offset + len(new)] == new:
+            restored = data[:offset] + old + data[offset + len(new):]
+            if write_kernel_raw(path, restored, is_gz):
+                remove_record(path)
+                return "RESTORED_FROM_RECORD"
+            return "WRITE_ERROR"
+        if len(data) >= offset + len(old) and data[offset:offset + len(old)] == old:
+            remove_record(path)
+            return "ALREADY_ORIGINAL"
+        # The kernel was replaced or changed underneath us; the record is stale.
+        remove_record(path)
+
+    # Fallback for kernels patched by older package versions (no record).
     if OLD_FREQS in data:
         return "ALREADY_ORIGINAL"
     if data.count(NEW_FREQS) == 1:
-        restored = data.replace(NEW_FREQS, OLD_FREQS, 1)
+        offset = data.find(NEW_FREQS)
+        restored = data[:offset] + OLD_FREQS + data[offset + len(NEW_FREQS):]
         if write_kernel_raw(path, restored, is_gz):
             return "RESTORED"
         return "WRITE_ERROR"
     return "PATTERN_NOT_FOUND"
+
 
 def get_kernel_status(path):
     data, _ = read_kernel_raw(path)
@@ -147,7 +240,8 @@ def print_status():
     for k in kernels:
         stat = get_kernel_status(k)
         indicator = "[ OK ]" if stat == "PATCHED" else ("[WARN]" if stat == "UNPATCHED" else "[????]")
-        print(f"  {indicator} {k}: {stat}")
+        record = " (recovery record)" if read_record(k) else ""
+        print(f"  {indicator} {k}: {stat}{record}")
     print("==================================================")
 
 def apply_all():
@@ -161,6 +255,9 @@ def apply_all():
             print(f"[cm5-mmc-fix] Already patched: {k}")
         elif res == "PATTERN_NOT_FOUND":
             print(f"[cm5-mmc-fix] Warning: mmc_rescan pattern not found in {k}")
+        elif res == "VERIFY_ERROR_ROLLED_BACK":
+            print(f"[cm5-mmc-fix] Verification failed in {k}; original image restored")
+            success = False
         else:
             print(f"[cm5-mmc-fix] Error patching {k}: {res}")
             success = False
@@ -171,7 +268,7 @@ def restore_all():
     success = True
     for k in kernels:
         res = restore_kernel(k)
-        if res == "RESTORED":
+        if res in ("RESTORED", "RESTORED_FROM_RECORD"):
             print(f"[cm5-mmc-fix] Restored original mmc_rescan freqs[] in {k}")
         elif res == "ALREADY_ORIGINAL":
             print(f"[cm5-mmc-fix] Already original: {k}")

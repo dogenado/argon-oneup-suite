@@ -1,0 +1,15 @@
+[Unit]
+Description=Power down unused CM5 onboard Ethernet PHY
+Documentation=https://github.com/GamingTux/argon-oneup-suite
+ConditionPathExists=/sys/class/net/eth0
+After=network-pre.target
+Before=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/argon-unused-ethernet start
+ExecStop=/usr/sbin/argon-unused-ethernet stop
+
+[Install]
+WantedBy=multi-user.target

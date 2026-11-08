@@ -5,6 +5,7 @@ Maintainer: GamingTux <gamingtux@users.noreply.github.com>
 Section: admin
 Priority: optional
 Homepage: https://github.com/GamingTux/argon-oneup-suite
+Recommends: iproute2
 Description: Essential hardware configuration and APT repository for Argon ONE UP laptop
  Sets up the official Argon ONE UP APT repository and ensures essential hardware
  configuration parameters are written to /boot/firmware/config.txt:
@@ -15,4 +16,5 @@ Description: Essential hardware configuration and APT repository for Argon ONE U
   - Webcam audio endpoint quirk (eliminates 1.5s boot hang)
   - Disables dummy CSI camera nodes (pisp_be) & silent internal HDMI audio sink
   - Power saving standby for unused onboard CM5 Gigabit Ethernet PHY
+    (opt-out and fully reversible with DISABLE_UNUSED_ETHERNET=0)
   - Official APT archive keyring and sources list

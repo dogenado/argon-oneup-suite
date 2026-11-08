@@ -1,0 +1,39 @@
+#!/bin/sh
+# Power the unused CM5 onboard Ethernet PHY up or down.
+# This is intentionally a small, reversible helper: `stop` re-enables eth0.
+set -e
+
+IFACE="${ARGON_ETHERNET_IFACE:-eth0}"
+
+if ! command -v ip >/dev/null 2>&1; then
+    echo "[argon-unused-ethernet] iproute2 is not installed; nothing to do." >&2
+    exit 0
+fi
+
+case "${1:-status}" in
+    start)
+        if [ -e "/sys/class/net/$IFACE" ]; then
+            ip link set dev "$IFACE" down 2>/dev/null || true
+            echo "[argon-unused-ethernet] $IFACE powered down"
+        fi
+        ;;
+    stop)
+        if [ -e "/sys/class/net/$IFACE" ]; then
+            ip link set dev "$IFACE" up 2>/dev/null || true
+            echo "[argon-unused-ethernet] $IFACE re-enabled"
+        fi
+        ;;
+    status)
+        if [ -e "/sys/class/net/$IFACE" ]; then
+            ip -brief link show dev "$IFACE" 2>/dev/null || true
+        else
+            echo "$IFACE not present"
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|status}" >&2
+        exit 2
+        ;;
+esac
+
+exit 0
