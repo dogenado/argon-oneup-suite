@@ -8,10 +8,13 @@ Homepage: https://github.com/GamingTux/argon-oneup-suite
 Depends: rpi-suspend (>= 1.5.0)
 Recommends: argon-oneup-lid (>= 1.3.4), argon-oneup-backlight (>= 1.3.4), argon-oneup-battery (>= 1.3.4)
 Suggests: rpi-pishutdown (>= 1.3.4)
-Description: Argon ONE UP Sleep, Standby & Clamshell Configuration
+Description: Argon ONE UP Userspace Standby & Clamshell Configuration
  Configures and activates the Argon ONE UP laptop hardware profile for rpi-suspend:
   - Selects argon-oneup hardware profile in /etc/rpi-suspend.conf.d/
   - Internal eDP-1 display clamshell blanking & instant resume
-  - Keyboard & LED power cut on USB ports 6 & 7 during sleep
+  - Keyboard & LED power cut on USB ports 6 & 7 during standby
   - Preserves TRRS 3.5mm headset combo jack button
-  - Enables lid wakeup and low-power sleep hooks
+  - Enables lid wakeup and low-power standby hooks
+ .
+ Note: the Raspberry Pi CM5 has no ACPI S3/s2idle support. This package
+ configures a userspace low-power standby, not true hardware suspend.

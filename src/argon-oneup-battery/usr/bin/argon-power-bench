@@ -4,7 +4,8 @@ argon-power-bench - High Precision Power Consumption Benchmark Suite for Argon O
 Measures real 3S battery discharge over 60s per phase:
   1. Idle (Desktop, screen 70%, no CPU load)
   2. Full Load (4x Cortex-A76 @ 2.8 GHz via stress-ng)
-  3. Fake-Sleep (Full 'Lid-Closed' simulation: screen 0 + DPMS off, keyboard USB off, CPU powersave, cgroups frozen)
+  3. Fake-Sleep (userspace 'lid-closed' simulation; the CM5 has no true hardware
+     suspend: screen 0 + DPMS off, keyboard USB off, CPU powersave, cgroups frozen)
 """
 
 import os
@@ -382,9 +383,12 @@ def run_benchmark(duration=60):
     time.sleep(3)
 
     # -------------------------------------------------------------
-    # PHASE 3: FAKE-SLEEP (DECKEL-ZU SIMULATION) - 60 SEKUNDEN
+    # PHASE 3: USERSPACE FAKE-SLEEP (DECKEL-ZU SIMULATION) - 60 SEKUNDEN
     # -------------------------------------------------------------
-    print("\n--- PHASE 3: FAKE-SLEEP ('DECKEL ZU' SIMULATION) ---")
+    print("\n--- PHASE 3: USERSPACE FAKE-SLEEP ('DECKEL ZU' SIMULATION) ---")
+    print("Hinweis: Der CM5 hat kein echtes ACPI-S3/Suspend; diese Phase simuliert")
+    print("         nur einen Userspace-Standby (Prozesse einfrieren, CPU parken,")
+    print("         USB/Display abschalten).")
     print("Schalte Display komplett aus (Helligkeit 0 + DPMS Off),")
     print("schalte Tastatur/Touchpad-USB-Ports stromlos (LEDs aus),")
     print("drossle CPU auf Powersave (1.5 GHz), friere User-Apps ein,")
@@ -426,8 +430,6 @@ def run_benchmark(duration=60):
         set_wifi_power_save(True)
         set_audio_autosuspend()
         set_fan_sleep_mode(True)
-        if os.path.isfile("/usr/bin/cm5-mmc-fix"):
-            subprocess.run(["/usr/bin/cm5-mmc-fix", "--sleep"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         time.sleep(3) # Wait for complete settling
         sleep_samples = sample_period("FakeSleep", duration)
@@ -447,8 +449,6 @@ def run_benchmark(duration=60):
                     f.write("f")
         except Exception:
             pass
-        if os.path.isfile("/usr/bin/cm5-mmc-fix"):
-            subprocess.run(["/usr/bin/cm5-mmc-fix", "--wake"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         set_fan_sleep_mode(False)
         set_wifi_power_save(False)
         set_cgroups_frozen(freeze=False)

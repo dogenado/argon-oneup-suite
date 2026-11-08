@@ -195,6 +195,12 @@ def main():
 
     action = args.action.lower() if args.action else "status"
 
+    if "--sleep" in unknown or "--wake" in unknown or action in ("sleep", "wake"):
+        print("[cm5-mmc-fix] --sleep/--wake are not supported: the CM5 has no true "
+              "ACPI suspend. The userspace standby path is handled by rpi-suspend.",
+              file=sys.stderr)
+        sys.exit(0)
+
     if args.kernel_hook or args.apply or action in ("apply", "patch"):
         if os.geteuid() != 0:
             print("Error: Root privileges required to patch kernel images.", file=sys.stderr)

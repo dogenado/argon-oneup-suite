@@ -10,6 +10,9 @@
 
 Out of the box, standard Linux distributions (LMPE / Linux Mint Pi Edition, Raspberry Pi OS 64-bit Trixie/Bookworm, LMDE 7 Gigi, Debian 12/13, Ubuntu 24.04/24.10, Cinnamon, KDE Plasma, GNOME, XFCE) lack native kernel drivers and hardware definitions for the Argon ONE UP laptop's custom embedded components. **Argon ONE UP Suite** bridges every hardware component directly into standard Linux kernel subsystems (`/sys/class/power_supply`, `/sys/class/backlight`, `EV_SW`/`SW_LID`, `hwmon`/`lm-sensors`, `UPower`, `systemd-logind`, and `power-profiles-daemon`)—with zero proprietary background bloat and lightning-fast **~5.8 second boot times**.
 
+> [!IMPORTANT]
+> The Raspberry Pi CM5 has **no ACPI S3/s2idle support**. The suspend/standby features in this suite are a **userspace low-power standby** (process freezing, CPU parking, USB/display power cuts), not true hardware suspend. Closing the lid triggers this userspace standby via `rpi-suspend`, not a hardware sleep state.
+
 ![Argon ONE UP KDE Plasma 6 Hardware Telemetry Dashboard](assets/dashboard-screenshot.png)
 
 ---
@@ -27,7 +30,7 @@ Out of the box, standard Linux distributions (LMPE / Linux Mint Pi Edition, Rasp
   * **Official APT Repository:** Automatically installs the official repository sources and signing keyring for updates.
   * **Single Hardware Configuration:** Cleanly managed via `/etc/argon-oneup.conf`.
 * **⚡ Dynamic ARM64 Power Profiles (`argon-oneup-power-profiles`):** Drop-in D-Bus replacement for `power-profiles-daemon` (`power-saver` @ 1.5 GHz, `balanced` @ dynamic `schedutil` 2.8 GHz, `performance` @ locked 2.8 GHz) with dynamic PCIe ASPM switching, automatic AC/battery profile switching, and per-profile display brightness memory.
-* **💤 Low-Power Standby / Sleep ([`rpi-suspend`](https://github.com/GamingTux/rpi-suspend)):** Universal userspace sleep manager for Raspberry Pi 5 / CM5 where ACPI S3 is unavailable. Freezes user processes via `cgroups v2`, parks CPU cores C1–C3 in hardware `WFI` on `CPU0`, puts the internal USB 2.0 host tree and unused Ethernet PHY into power-down, blanks display via DRM DPMS, and wakes in **< 1 ms** on lid open or keypress.
+* **💤 Userspace Low-Power Standby ([`rpi-suspend`](https://github.com/GamingTux/rpi-suspend)):** Universal userspace standby manager for Raspberry Pi 5 / CM5 where ACPI S3/s2idle is unavailable. It freezes user processes via `cgroups v2`, parks CPU cores C1–C3 in hardware `WFI` on `CPU0`, puts the internal USB 2.0 host tree and unused Ethernet PHY into power-down, blanks display via DRM DPMS, and wakes in **< 1 ms** on lid open or keypress. This is a userspace low-power mode, **not true hardware suspend**.
 * **🛠️ Raspberry Pi CM5 Lite Shutdown Hang Fix (`cm5-mmc-fix` in Extras):** Eliminates the 30–80 second shutdown/reboot hang caused by the BCM2712 SDHCI 100 kHz hardware timeout when the microSD slot is empty.
 
 ---
@@ -46,8 +49,8 @@ The project is cleanly divided into **Core Hardware Packages** ([`src/`](src)) a
 | [**`argon-oneup-lid`**](src/argon-oneup-lid) | `all` | **Magnetic Lid Switch Overlay:** Configures GPIO 27 as a native Linux `SW_LID` input device via Device Tree overlay. |
 | [**`argon-oneup-sensors`**](src/argon-oneup-sensors) | `all` | **Hardware Sensors Mapping:** Standardizes `lm-sensors` physical hardware definitions (`/etc/sensors.d/argon-oneup.conf`) for CPU thermal, RP1, PWM Fan RPM, NVMe SSD temperature, and CW2217 battery telemetry across all Linux distributions. |
 | [**`argon-oneup-power-profiles`**](src/argon-oneup-power-profiles) | `all` | **ARM64 Power Profiles Daemon:** Implements `org.freedesktop.UPower.PowerProfiles` / `net.hadess.PowerProfiles` D-Bus APIs to manage `schedutil`/`performance`/`powersave` CPU governors, PCIe ASPM, Wi-Fi power saving, and display backlight states. |
-| [**`argon-oneup-suspend`**](src/argon-oneup-suspend) | `all` | **Hardware Sleep & Clamshell Integration:** Activates the Argon ONE UP hardware profile for `rpi-suspend` (`/etc/rpi-suspend.conf.d/90-argon-oneup.conf`). Enables automatic keyboard & LED sleep power cuts, display DPMS blanking, instant lid-open wake, and preserves the TRRS combo jack button. |
-| [**`rpi-suspend`**](https://github.com/GamingTux/rpi-suspend) | `all` | **Universal Standby & Sleep Manager (Upstream):** Deep userspace suspend (`cgroups v2` freeze, single-core WFI + IRQ parking on `CPU0`, USB autosuspend, DPMS off) with instant lid-open & keyboard wake. Maintained in the official `rpi-suspend` upstream repository and continuously synchronized into the Argon ONE UP APT repository. |
+| [**`argon-oneup-suspend`**](src/argon-oneup-suspend) | `all` | **Userspace Standby & Clamshell Integration:** Activates the Argon ONE UP hardware profile for `rpi-suspend` (`/etc/rpi-suspend.conf.d/90-argon-oneup.conf`). Enables automatic keyboard & LED standby power cuts, display DPMS blanking, instant lid-open wake, and preserves the TRRS combo jack button. The CM5 has no true ACPI suspend; this is a userspace low-power mode. |
+| [**`rpi-suspend`**](https://github.com/GamingTux/rpi-suspend) | `all` | **Universal Userspace Standby Manager (Upstream):** Userspace low-power standby (`cgroups v2` freeze, single-core WFI + IRQ parking on `CPU0`, USB autosuspend, DPMS off) with instant lid-open & keyboard wake. The CM5 has no true ACPI suspend; this is a userspace low-power mode. Maintained in the official `rpi-suspend` upstream repository and continuously synchronized into the Argon ONE UP APT repository. |
 | [**`rpi-vc4-edp`**](src/rpi-vc4-edp) | `all` | **Automatic Kernel eDP-1 Display Patcher:** Automatically patches and builds the `vc4` DRM driver across every kernel upgrade to expose internal HDMI laptop panels as native `eDP-1`. Fixes clamshell suspend, eliminates Wayland crashes, and auto-retires once upstream PR #7732 is released. |
 | [**`cm5-mmc-fix`**](src/cm5-mmc-fix) | `all` | **CM5 Empty MicroSD Slot Shutdown Fix:** Patches the BCM2712 SDHCI rescan timeout table (`mmc_rescan freqs[]`) and applies `cm5-sdcard-fast.dtbo` across kernel upgrades to eliminate the 30–80s shutdown hang. |
 | [**`argon-oneup-suite`**](src/argon-oneup-suite) | `all` | **Core Metapackage:** Installs all 10 core packages above with a single command. 100% system-agnostic and clean: modifies no third-party system components. |
@@ -81,8 +84,18 @@ ENABLE_NVME=1
 # Enable hardware I2C bus (dtparam=i2c_arm=on) for battery gauge & display backlight
 ENABLE_I2C=1
 
+# Enable the internal USB 2.0 hub (dtoverlay=dwc2,dr_mode=host)
+# Needed on some Debian/Ubuntu images for keyboard, trackpad, camera and speakers
+ENABLE_INTERNAL_USB_HUB=1
+
 # Apply Argon ONE UP 4-stage quiet blower fan curve (40C/50C/60C/70C with 5C hysteresis)
 ENABLE_FAN_CURVE=1
+
+# Disable slow boot-time CSI camera / DSI display probing (camera_auto_detect=0, display_auto_detect=0)
+FAST_BOOT_NO_PROBES=1
+
+# Put the unused onboard CM5 Gigabit Ethernet PHY into low-power mode
+DISABLE_UNUSED_ETHERNET=1
 ```
 
 Apply any changes instantly without rebooting:

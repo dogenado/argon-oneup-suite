@@ -34,7 +34,7 @@ if [ -n "$BOOT_DIR" ]; then
 fi
 
 # DKMS registration and build
-DKMS_DIR=$(ls -d /usr/src/oneUpPower-* 2>/dev/null | head -n1)
+DKMS_DIR=$(ls -d /usr/src/oneUpPower-* 2>/dev/null | sort -V | tail -n1)
 DKMS_VER="1.0"
 if [ -n "$DKMS_DIR" ] && [ -f "$DKMS_DIR/dkms.conf" ]; then
     PARSED_VER=$(grep '^PACKAGE_VERSION=' "$DKMS_DIR/dkms.conf" | cut -d'"' -f2)
@@ -42,27 +42,50 @@ if [ -n "$DKMS_DIR" ] && [ -f "$DKMS_DIR/dkms.conf" ]; then
 fi
 
 if command -v dkms >/dev/null 2>&1; then
-    dkms remove -m oneUpPower -v "$DKMS_VER" --all 2>/dev/null || true
+    # Versions already registered before this install/upgrade. They stay in
+    # place until the new version has built successfully for every kernel.
+    OLD_VERSIONS=$(dkms status 2>/dev/null | awk -F'[/,:]' '/^oneUpPower\// {gsub(/ /, "", $2); print $2}' | sort -u)
+
     echo "[argon-oneup-battery] Registering oneUpPower/$DKMS_VER with DKMS..."
     dkms add -m oneUpPower -v "$DKMS_VER" 2>/dev/null || true
 
-    BUILT_ANY=0
+    TOTAL_KERNELS=0
+    BUILT_KERNELS=0
+    BUILD_FAILED=0
+    KERNELS=""
     for KBUILD in /lib/modules/*/build; do
         [ -d "$KBUILD" ] || continue
         KVER=$(basename "$(dirname "$KBUILD")")
+        KERNELS="$KERNELS $KVER"
+        TOTAL_KERNELS=$((TOTAL_KERNELS + 1))
         echo "[argon-oneup-battery] Building oneUpPower/$DKMS_VER for kernel $KVER..."
         if dkms build -m oneUpPower -v "$DKMS_VER" -k "$KVER" --force; then
-            echo "[argon-oneup-battery] Installing oneUpPower/$DKMS_VER module for $KVER..."
-            dkms install -m oneUpPower -v "$DKMS_VER" -k "$KVER" --force || true
-            depmod -a "$KVER" 2>/dev/null || true
-            BUILT_ANY=1
+            BUILT_KERNELS=$((BUILT_KERNELS + 1))
+        else
+            BUILD_FAILED=1
         fi
     done
 
-    if [ "$BUILT_ANY" -eq 0 ]; then
+    if [ "$TOTAL_KERNELS" -eq 0 ]; then
         KVER=$(uname -r)
         echo "WARNING: [argon-oneup-battery] No matching kernel headers found (current: $KVER)." >&2
         echo "WARNING: Ensure kernel headers are installed: sudo apt install linux-headers-$KVER" >&2
+    elif [ "$BUILD_FAILED" -ne 0 ]; then
+        echo "WARNING: [argon-oneup-battery] Only $BUILT_KERNELS/$TOTAL_KERNELS kernels built successfully; keeping the existing DKMS driver." >&2
+    else
+        # Only replace the existing driver after every kernel built cleanly.
+        for V in $OLD_VERSIONS; do
+            [ "$V" = "$DKMS_VER" ] && continue
+            echo "[argon-oneup-battery] Removing old DKMS version $V..."
+            dkms remove -m oneUpPower -v "$V" --all 2>/dev/null || true
+        done
+
+        for KVER in $KERNELS; do
+            echo "[argon-oneup-battery] Installing oneUpPower/$DKMS_VER module for $KVER..."
+            dkms install -m oneUpPower -v "$DKMS_VER" -k "$KVER" --force || \
+                echo "WARNING: [argon-oneup-battery] DKMS install failed for $KVER." >&2
+            depmod -a "$KVER" 2>/dev/null || true
+        done
     fi
 fi
 

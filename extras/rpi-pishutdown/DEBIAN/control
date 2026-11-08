@@ -10,5 +10,5 @@ Recommends: rpi-suspend
 Description: Standby-enabled Shutdown Dialog for Raspberry Pi OS (Labwc / LXDE)
  Drop-in replacement for /usr/bin/pishutdown on Raspberry Pi OS.
  Adds a "Standby (Ruhezustand)" button that interfaces with systemd-suspend
- and rpi-suspend for low-power sleep mode.
+ and rpi-suspend for userspace low-power standby mode.
  Diverts the original /usr/bin/pishutdown safely using dpkg-divert.

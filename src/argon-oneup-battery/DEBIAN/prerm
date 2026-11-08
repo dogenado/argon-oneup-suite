@@ -10,9 +10,26 @@ if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
     # Unload module
     modprobe -r oneUpPower 2>/dev/null || true
 
-    # Remove DKMS module
+    # Remove all registered DKMS versions, not just a hardcoded one.
     if command -v dkms >/dev/null 2>&1; then
-        dkms remove -m oneUpPower -v "1.0" --all 2>/dev/null || true
+        VERSIONS=$(dkms status 2>/dev/null | awk -F'[/,:]' '/^oneUpPower\// {gsub(/ /, "", $2); print $2}' | sort -u) || true
+        if [ -z "$VERSIONS" ]; then
+            # Fallback for a damaged DKMS database: use the installed source tree.
+            DKMS_DIR=$(ls -d /usr/src/oneUpPower-* 2>/dev/null | sort -V | tail -n1)
+            if [ -n "$DKMS_DIR" ] && [ -f "$DKMS_DIR/dkms.conf" ]; then
+                V=$(grep '^PACKAGE_VERSION=' "$DKMS_DIR/dkms.conf" | cut -d'"' -f2)
+                if [ -n "$V" ]; then
+                    VERSIONS="$V"
+                fi
+            fi
+        fi
+        for V in $VERSIONS; do
+            dkms remove -m oneUpPower -v "$V" --all 2>/dev/null || true
+        done
+        for KDIR in /lib/modules/*; do
+            [ -d "$KDIR" ] || continue
+            depmod -a "$(basename "$KDIR")" 2>/dev/null || true
+        done
     fi
 fi
 

@@ -13,7 +13,7 @@ Description: Complete hardware support suite for Argon ONE UP laptop
  Includes hardware essentials (antenna, NVMe Gen 3, blower fan curve, I2C, APT repo),
  battery telemetry (CW2217), DDC/CI display backlight, magnetic lid switch,
  power profiles daemon, standard lm-sensors hardware configuration,
- rpi-suspend userspace sleep/standby manager, rpi-vc4-edp display patcher, and
+ rpi-suspend userspace standby manager, rpi-vc4-edp display patcher, and
  cm5-mmc-fix empty microSD slot shutdown fix.
  Fully system-agnostic: works across all Linux distributions and desktop environments.
  Optional extensions (KDE widgets and Pi OS dialogs)
