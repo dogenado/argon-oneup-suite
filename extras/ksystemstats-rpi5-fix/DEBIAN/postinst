@@ -1,14 +1,15 @@
 #!/bin/bash
 set -e
 
-# Set CAP_SYS_ADMIN file capability for namespace helper (with SUID fallback if chroot drops CAP_SETFCAP)
+# The namespace helper needs CAP_SYS_ADMIN for unshare()/mount().
+# Use file capabilities only; never install a SUID-root fallback.
 if [ -f /usr/bin/ksystemstats-ns-helper ]; then
+    chmod 0755 /usr/bin/ksystemstats-ns-helper
     if setcap cap_sys_admin+ep /usr/bin/ksystemstats-ns-helper 2>/dev/null; then
-        chmod 0755 /usr/bin/ksystemstats-ns-helper
         echo "[ksystemstats-rpi5-fix] Configured cap_sys_admin on /usr/bin/ksystemstats-ns-helper"
     else
-        chmod 4755 /usr/bin/ksystemstats-ns-helper
-        echo "[ksystemstats-rpi5-fix] Configured SUID fallback on /usr/bin/ksystemstats-ns-helper (CAP_SETFCAP dropped in chroot)"
+        echo "[ksystemstats-rpi5-fix] WARNING: could not set cap_sys_admin on the namespace helper." >&2
+        echo "                 The ksystemstats fix will remain inactive until the capability is set." >&2
     fi
 fi
 

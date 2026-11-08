@@ -1,8 +1,0 @@
-polkit.addRule(function(action, subject) {
-    if ((action.id == "net.hadess.PowerProfiles.HoldProfile" ||
-         action.id == "net.hadess.PowerProfiles.SwitchProfile" ||
-         action.id == "org.freedesktop.UPower.PowerProfiles.SwitchProfile") &&
-        (subject.isInGroup("sudo") || subject.active)) {
-        return polkit.Result.YES;
-    }
-});

@@ -61,6 +61,27 @@ def _is_system_sleeping():
     return False
 
 
+def is_active_user(uid):
+    """Return True for an active local logind session.
+
+    This mirrors the intent of the old polkit rule (subject.active) and avoids
+    treating a lingering or remote runtime directory as an active user.
+    """
+    if uid == 0:
+        return True
+    if not os.path.isdir(f"/run/user/{uid}"):
+        return False
+    try:
+        state = subprocess.check_output(
+            ["loginctl", "show-user", str(uid), "--property=State", "--value"],
+            text=True, timeout=2
+        ).strip()
+        return state == "active"
+    except Exception:
+        # If loginctl is unavailable, retain the runtime-directory check.
+        return True
+
+
 def sync_external_hdmi_hotplug():
     """
     Workaround for upstream Raspberry Pi vc4_hdmi_hpd_irq_thread() bug:
@@ -273,6 +294,7 @@ def apply_wifi_powersave(profile):
 
 def set_brightness(val):
     val = max(5, min(100, int(val)))
+    wrote_sysfs = False
     for bl in glob.glob("/sys/class/backlight/*"):
         try:
             max_b = 100
@@ -283,18 +305,31 @@ def set_brightness(val):
             target = max(1, int(round((val / 100.0) * max_b)))
             with open(f"{bl}/brightness", "w") as fp:
                 fp.write(str(target))
+            wrote_sysfs = True
         except OSError:
             pass
-    for bus_path in glob.glob("/run/user/*/bus"):
-        try:
-            bus = dbus.bus.BusConnection(f"unix:path={bus_path}")
-            obj = bus.get_object("org.kde.Solid.PowerManagement", "/org/kde/Solid/PowerManagement/Actions/BrightnessControl")
-            iface = dbus.Interface(obj, "org.kde.Solid.PowerManagement.Actions.BrightnessControl")
-            max_b = int(iface.brightnessMax())
-            target = int(round((val / 100.0) * max_b))
-            iface.setBrightnessSilent(target)
-        except Exception:
-            pass
+
+    # Only fall back to the user-session D-Bus API when sysfs is unavailable.
+    # This avoids a root daemon connecting to every user bus on every switch.
+    if not wrote_sysfs:
+        for bus_path in glob.glob("/run/user/*/bus"):
+            try:
+                uid = int(os.path.basename(os.path.dirname(bus_path)))
+            except (TypeError, ValueError):
+                continue
+            if not is_active_user(uid):
+                continue
+            try:
+                bus = dbus.bus.BusConnection(f"unix:path={bus_path}")
+                obj = bus.get_object("org.kde.Solid.PowerManagement", "/org/kde/Solid/PowerManagement/Actions/BrightnessControl")
+                iface = dbus.Interface(obj, "org.kde.Solid.PowerManagement.Actions.BrightnessControl")
+                max_b = int(iface.brightnessMax())
+                if max_b <= 0 or max_b > 1000000:
+                    continue
+                target = max(1, min(max_b, int(round((val / 100.0) * max_b))))
+                iface.setBrightnessSilent(target)
+            except Exception:
+                pass
     print(f"[power-profiles] Brightness set to {val}%")
 
 
@@ -469,22 +504,24 @@ class PowerProfilesService(dbus.service.Object):
         return self.get_all_properties(interface_name)
 
     def _is_sender_authorized(self, sender):
+        # Enforcement mirrors the documented policy: root, members of the
+        # sudo/wheel admin groups, or an active local logind session.
         if not sender:
-            return True
+            return False
         try:
             uid = int(self.bus.get_unix_user(sender))
-            if uid == 0 or os.path.isdir(f"/run/user/{uid}"):
+            if uid == 0:
                 return True
             uname = pwd.getpwuid(uid).pw_name
-            for gname in ("sudo", "wheel", "video", "plugdev", "netdev"):
+            for gname in ("sudo", "wheel"):
                 try:
                     if uname in grp.getgrnam(gname).gr_mem:
                         return True
                 except KeyError:
                     pass
+            return is_active_user(uid)
         except Exception:
-            pass
-        return False
+            return False
 
     @dbus.service.method(INTERFACE_PROPS, in_signature="ssv", sender_keyword="sender")
     def Set(self, interface_name, property_name, new_value, sender=None):

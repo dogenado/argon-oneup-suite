@@ -8,6 +8,17 @@ Type=oneshot
 ExecStart=/usr/sbin/argon-backlight-init start
 ExecStop=/usr/sbin/argon-backlight-init stop
 RemainAfterExit=yes
+# Low-risk sandboxing. Do not add ProtectKernelModules/PrivateDevices here:
+# this service loads ddcci modules and touches /sys and /dev/i2c-*.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target

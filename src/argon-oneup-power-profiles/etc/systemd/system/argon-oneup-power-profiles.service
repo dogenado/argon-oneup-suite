@@ -10,6 +10,19 @@ ExecStart=/usr/sbin/argon-oneup-power-profiles
 Restart=on-failure
 RestartSec=2
 KillMode=process
+# Low-risk sandboxing. ProtectSystem is intentionally not used because the
+# daemon writes sysfs, /proc/sys and /lib/firmware/edid. ProtectHome is not
+# used either: the daemon needs /run/user for session D-Bus access.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target

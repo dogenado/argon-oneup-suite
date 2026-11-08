@@ -2,11 +2,33 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """
 ksystemstats-rpi5-fix — Patches ksystemstats_plugin_cpu.so to map cpu_thermal on Raspberry Pi 5.
+
+The patch offsets below target the tested KDE Plasma 6 build of the plugin.
+Unknown layouts are left untouched and reported instead of being patched
+blindly.
 """
 import os
 import shutil
 import struct
 import sys
+
+PLUGIN_MIN_SIZE = 0x12000
+SERIAL_OFFSET = 0x11a80
+SERIAL_MAGIC = b"Serial\x00"
+CPUINFO_OFFSET = 0x11a60
+CPUINFO_VALUE = b"cpu_thermal\x00\x00\x00\x00\x00"
+
+
+def patch_values():
+    return {
+        0xbb98: 0xb4000001 | (((-117) & 0x7ffff) << 5),
+        0xbba8: 0x54000001 | (((-121) & 0x7ffff) << 5),
+        0xbbb4: 0x14000000 | ((-124) & 0x3ffffff),
+        0xb6d8: 0xb9000bff,
+        0xb6dc: 0xb90013ff,
+        0xb54c: 0x94000000 | (((0x9820 - 0xb54c) >> 2) & 0x3ffffff),
+    }
+
 
 restore_mode = "--restore" in sys.argv[1:]
 args = [a for a in sys.argv[1:] if not a.startswith("-")]
@@ -47,33 +69,49 @@ if os.path.isfile(cpu_path):
     try:
         with open(cpu_path, "rb") as f:
             data = bytearray(f.read())
+
+        patch = patch_values()
         changed = False
-        if len(data) >= 0x12000 and data[0x11a80:0x11a87] == b"Serial\x00":
-            insn_bb98 = 0xb4000001 | (((-117) & 0x7ffff) << 5)
-            if struct.unpack_from("<I", data, 0xbb98)[0] != insn_bb98:
+
+        if len(data) >= PLUGIN_MIN_SIZE and data[SERIAL_OFFSET:SERIAL_OFFSET + len(SERIAL_MAGIC)] == SERIAL_MAGIC:
+            already_patched = (
+                all(struct.unpack_from("<I", data, off)[0] == insn for off, insn in patch.items())
+                and data[CPUINFO_OFFSET:CPUINFO_OFFSET + len(CPUINFO_VALUE)] == CPUINFO_VALUE
+            )
+            if not already_patched:
+                # Never patch without a recoverable backup.
                 try:
                     os.makedirs(stamp_dir, exist_ok=True)
                     shutil.copy2(cpu_path, backup_file)
-                except Exception:
-                    pass
-                struct.pack_into("<I", data, 0xbb98, insn_bb98)
-                struct.pack_into("<I", data, 0xbba8, 0x54000001 | (((-121) & 0x7ffff) << 5))
-                struct.pack_into("<I", data, 0xbbb4, 0x14000000 | ((-124) & 0x3ffffff))
-                struct.pack_into("<I", data, 0xb6d8, 0xb9000bff)
-                struct.pack_into("<I", data, 0xb6dc, 0xb90013ff)
-                data[0x11a60:0x11a70] = b"cpu_thermal\x00\x00\x00\x00\x00"
-                offset_b54c = (0x9820 - 0xb54c) >> 2
-                struct.pack_into("<I", data, 0xb54c, 0x94000000 | (offset_b54c & 0x3ffffff))
-                changed = True
-        if changed:
-            tmp_path = cpu_path + ".tmp"
-            with open(tmp_path, "wb") as f:
-                f.write(data)
-            os.chmod(tmp_path, 0o644)
-            os.replace(tmp_path, cpu_path)
-            print("[argon-oneup-sensors] Successfully patched ksystemstats_plugin_cpu.so for cpu_thermal")
+                except Exception as e:
+                    print(f"[ksystemstats-rpi5-fix] Cannot create backup ({e}); leaving plugin unchanged.", file=sys.stderr)
+                    sys.exit(0)
 
-        # Update stamp
+                for off, insn in patch.items():
+                    struct.pack_into("<I", data, off, insn)
+                data[CPUINFO_OFFSET:CPUINFO_OFFSET + len(CPUINFO_VALUE)] = CPUINFO_VALUE
+                changed = True
+        else:
+            print("[ksystemstats-rpi5-fix] Unrecognized ksystemstats plugin layout; leaving it unchanged.", file=sys.stderr)
+
+        if changed:
+            # Verify every write before replacing the original file.
+            verified = (
+                all(struct.unpack_from("<I", data, off)[0] == insn for off, insn in patch.items())
+                and data[CPUINFO_OFFSET:CPUINFO_OFFSET + len(CPUINFO_VALUE)] == CPUINFO_VALUE
+            )
+            if not verified:
+                print("[ksystemstats-rpi5-fix] Patch verification failed; original left unchanged.", file=sys.stderr)
+            else:
+                tmp_path = cpu_path + ".tmp"
+                with open(tmp_path, "wb") as f:
+                    f.write(data)
+                os.chmod(tmp_path, 0o644)
+                os.replace(tmp_path, cpu_path)
+                print("[argon-oneup-sensors] Successfully patched ksystemstats_plugin_cpu.so for cpu_thermal")
+
+        # Update stamp, including for unknown layouts, so apt does not retry
+        # until the plugin file changes.
         try:
             os.makedirs(stamp_dir, exist_ok=True)
             new_mtime = str(int(os.path.getmtime(cpu_path)))
@@ -82,4 +120,4 @@ if os.path.isfile(cpu_path):
         except Exception:
             pass
     except Exception as e:
-        print(f"[argon-oneup-sensors] Warning: could not patch ksystemstats_plugin_cpu: {e}", file=sys.stderr)
+        print(f"[ksystemstats-rpi5-fix] Warning: could not patch ksystemstats_plugin_cpu: {e}", file=sys.stderr)

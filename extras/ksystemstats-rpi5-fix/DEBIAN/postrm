@@ -24,7 +24,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
 fi
 
 if [ "$1" = "purge" ]; then
-    rm -rf /etc/systemd/user/plasma-ksystemstats.service.d
+    # Only remove package-owned files. Do not delete admin overrides under /etc.
     rm -f /etc/apt/apt.conf.d/99-ksystemstats-rpi5-fix
 fi
 exit 0

@@ -19,3 +19,6 @@ Description: Hardware Power Profiles Daemon for Argon ONE UP Laptop
   - PCIe ASPM & Kernel Workqueue Power Efficiency per profile
   - WiFi Power Saving (powersave on / off)
   - Display Backlight with per-profile memory and automatic restore
+ .
+ Profile switching is allowed for root, active local sessions, and members
+ of the sudo/wheel groups. Authorization is enforced by the daemon itself.

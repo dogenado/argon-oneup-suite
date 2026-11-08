@@ -3,26 +3,62 @@ set -e
 
 WFPANEL_BATT="/usr/lib/aarch64-linux-gnu/wf-panel-pi/libbatt.so"
 ARGON_BATT="/usr/share/argon-oneup/wf-panel-pi/libbatt.so"
+DIVERT_TARGET="${WFPANEL_BATT}.distrib"
 
-if [ -f "$ARGON_BATT" ]; then
-    mkdir -p /usr/lib/aarch64-linux-gnu/wf-panel-pi
+if [ ! -f "$ARGON_BATT" ]; then
+    echo "[argon-wfplug-batt] Missing $ARGON_BATT; nothing to install." >&2
+    exit 0
+fi
+
+if [ ! -e "$WFPANEL_BATT" ] && [ ! -L "$WFPANEL_BATT" ]; then
+    echo "[argon-wfplug-batt] $WFPANEL_BATT not found; install wf-panel-pi first." >&2
+    exit 0
+fi
+
+mkdir -p "$(dirname "$WFPANEL_BATT")"
+
+DIVERT_INFO="$(dpkg-divert --list "$WFPANEL_BATT" 2>/dev/null || true)"
+
+# Migrate the old package name's diversion, if present.
+if echo "$DIVERT_INFO" | grep -q "by argon-oneup-battery"; then
+    rm -f "$WFPANEL_BATT"
+    dpkg-divert --package argon-oneup-battery --remove --rename \
+        --divert "$DIVERT_TARGET" "$WFPANEL_BATT" >/dev/null 2>&1 || true
     DIVERT_INFO="$(dpkg-divert --list "$WFPANEL_BATT" 2>/dev/null || true)"
-    if echo "$DIVERT_INFO" | grep -q "argon-oneup-battery"; then
-        rm -f "$WFPANEL_BATT"
-        dpkg-divert --package argon-oneup-battery --remove --rename \
-            --divert "${WFPANEL_BATT}.distrib" "$WFPANEL_BATT" >/dev/null 2>&1 || true
-        DIVERT_INFO=""
+fi
+
+# Never overwrite a file diverted by another package.
+if echo "$DIVERT_INFO" | grep -q "by argon-wfplug-batt"; then
+    : # our diversion is already active
+elif [ -n "$DIVERT_INFO" ]; then
+    echo "[argon-wfplug-batt] WARNING: $WFPANEL_BATT is diverted by another package;" >&2
+    echo "                 not replacing it." >&2
+    exit 0
+else
+    if ! dpkg-divert --package argon-wfplug-batt --add --rename \
+            --divert "$DIVERT_TARGET" "$WFPANEL_BATT" >/dev/null 2>&1; then
+        echo "[argon-wfplug-batt] WARNING: could not create the dpkg diversion;" >&2
+        echo "                 not replacing $WFPANEL_BATT." >&2
+        exit 0
     fi
-    if [ -z "$DIVERT_INFO" ]; then
-        dpkg-divert --package argon-wfplug-batt --add --rename \
-            --divert "${WFPANEL_BATT}.distrib" "$WFPANEL_BATT" >/dev/null 2>&1 || true
-    fi
-    cp -f "$ARGON_BATT" "$WFPANEL_BATT"
-    chmod 0644 "$WFPANEL_BATT"
-    echo "[argon-wfplug-batt] Installed enhanced wf-panel-pi battery widget ($WFPANEL_BATT)"
-    if pgrep -x wf-panel-pi >/dev/null 2>&1; then
-        pkill -x wf-panel-pi 2>/dev/null || true
-    fi
+fi
+
+# The diverted original is in $DIVERT_TARGET. Remove the symlink that
+# dpkg-divert created at the original path before installing our library;
+# otherwise cp/install would follow the symlink and overwrite the backup.
+rm -f "$WFPANEL_BATT"
+if ! install -m 0644 "$ARGON_BATT" "$WFPANEL_BATT"; then
+    echo "[argon-wfplug-batt] WARNING: failed to install $WFPANEL_BATT;" >&2
+    echo "                 restoring the original library." >&2
+    rm -f "$WFPANEL_BATT"
+    dpkg-divert --package argon-wfplug-batt --remove --rename \
+        --divert "$DIVERT_TARGET" "$WFPANEL_BATT" >/dev/null 2>&1 || true
+    exit 1
+fi
+
+echo "[argon-wfplug-batt] Installed enhanced wf-panel-pi battery widget ($WFPANEL_BATT)"
+if pgrep -x wf-panel-pi >/dev/null 2>&1; then
+    pkill -x wf-panel-pi 2>/dev/null || true
 fi
 
 exit 0

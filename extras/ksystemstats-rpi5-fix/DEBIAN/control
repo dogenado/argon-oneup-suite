@@ -4,7 +4,7 @@ Architecture: arm64
 Maintainer: GamingTux <gamingtux@users.noreply.github.com>
 Section: kde
 Priority: optional
-Depends: libcap2-bin, bash
+Depends: libcap2-bin, bash, sudo
 Recommends: plasma-systemmonitor, ksystemstats
 Provides: rpi5-kde-sensors-fix
 Homepage: https://github.com/GamingTux/argon-oneup-suite
@@ -12,3 +12,4 @@ Description: KDE Plasma 6 Systemmonitor ksystemstats Fix for Raspberry Pi 5 / CM
  Fixes KDE Plasma 6 Systemmonitor ksystemstats ARM64 /proc/cpuinfo deadlock
  (KDE Bug #493093) via private mount namespace and maps cpu_thermal to CPU cards.
  Includes ksystemstats-ns-helper binary, cpuinfo generator, and systemd service override.
+ The namespace helper uses a file capability only; no SUID-root fallback is used.

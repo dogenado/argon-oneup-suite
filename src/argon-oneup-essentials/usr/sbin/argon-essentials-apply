@@ -13,10 +13,35 @@ ENABLE_FAN_CURVE=1
 FAST_BOOT_NO_PROBES=1
 DISABLE_UNUSED_ETHERNET=1
 
-if [ -f "$CONF_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "$CONF_FILE"
-fi
+# Parse only known KEY=VALUE settings. Do not source the file: a config file
+# should never be executable as root shell code.
+load_conf() {
+    conf="$1"
+    [ -f "$conf" ] || return 0
+    while IFS='=' read -r key value; do
+        key=$(printf '%s' "$key" | tr -d '[:space:]')
+        case "$key" in
+            ''|\#*) continue ;;
+        esac
+        value=$(printf '%s' "$value" | sed 's/[[:space:]]#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        case "$value" in
+            \"*\") value=${value#\"}; value=${value%\"} ;;
+            \'*\') value=${value#\'}; value=${value%\'} ;;
+        esac
+        case "$key" in
+            ENABLE_ANT2) ENABLE_ANT2="$value" ;;
+            ENABLE_NVME) ENABLE_NVME="$value" ;;
+            ENABLE_NVME_GEN3) ENABLE_NVME_GEN3="$value" ;;
+            ENABLE_I2C) ENABLE_I2C="$value" ;;
+            ENABLE_INTERNAL_USB_HUB) ENABLE_INTERNAL_USB_HUB="$value" ;;
+            ENABLE_FAN_CURVE) ENABLE_FAN_CURVE="$value" ;;
+            FAST_BOOT_NO_PROBES) FAST_BOOT_NO_PROBES="$value" ;;
+            DISABLE_UNUSED_ETHERNET) DISABLE_UNUSED_ETHERNET="$value" ;;
+        esac
+    done < "$conf"
+}
+
+load_conf "$CONF_FILE"
 
 BOOT_CFG=""
 if [ -f /boot/firmware/config.txt ]; then
