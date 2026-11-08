@@ -114,6 +114,8 @@ done
 echo "=== Synchronizing External Packages (rpi-suspend) ==="
 RPI_SUSPEND_SYNCED=false
 RPI_SUSPEND_URL="https://github.com/GamingTux/rpi-suspend/releases/latest/download/rpi-suspend.deb"
+RPI_SUSPEND_API="https://api.github.com/repos/GamingTux/rpi-suspend/releases/latest"
+RPI_SUSPEND_CHECKSUM_FAILED=false
 
 # 1. Prefer local build if ../rpi-suspend exists and has a deb built
 if [ -d "${REPO_DIR}/../rpi-suspend" ]; then
@@ -130,21 +132,47 @@ if [ "${RPI_SUSPEND_SYNCED}" = false ]; then
     echo "Downloading latest rpi-suspend from GitHub Releases (${RPI_SUSPEND_URL})..."
     TMP_DEB=$(mktemp "${DIST_DIR}/rpi-suspend.XXXXXX.deb")
     if curl -fsSL -o "${TMP_DEB}" "${RPI_SUSPEND_URL}" 2>/dev/null; then
-        VER=$(dpkg-deb -f "${TMP_DEB}" Version 2>/dev/null || echo "latest")
-        ARCH=$(dpkg-deb -f "${TMP_DEB}" Architecture 2>/dev/null || echo "all")
-        mv -f "${TMP_DEB}" "${DIST_DIR}/rpi-suspend_${VER}_${ARCH}.deb"
-        RPI_SUSPEND_SYNCED=true
-        echo "Downloaded rpi-suspend (${VER} [${ARCH}]) successfully."
+        EXPECTED_DIGEST=""
+        if command -v python3 >/dev/null 2>&1; then
+            EXPECTED_DIGEST=$(curl -fsSL "${RPI_SUSPEND_API}" 2>/dev/null | \
+                python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((a.get("digest","") for a in d.get("assets",[]) if a.get("name") == "rpi-suspend.deb"), ""))' 2>/dev/null || true)
+        fi
+        ACTUAL_DIGEST="sha256:$(sha256sum "${TMP_DEB}" | awk '{print $1}')"
+        DOWNLOAD_OK=false
+        if [ -n "${EXPECTED_DIGEST}" ] && [ "${ACTUAL_DIGEST}" = "${EXPECTED_DIGEST}" ]; then
+            DOWNLOAD_OK=true
+        elif [ -z "${EXPECTED_DIGEST}" ] && [ "${RPI_SUSPEND_ALLOW_UNVERIFIED:-0}" = "1" ]; then
+            echo "WARNING: Could not retrieve the upstream SHA256 digest; continuing because RPI_SUSPEND_ALLOW_UNVERIFIED=1." >&2
+            DOWNLOAD_OK=true
+        elif [ -z "${EXPECTED_DIGEST}" ]; then
+            echo "ERROR: Could not retrieve the upstream SHA256 digest; refusing to use an unverified download." >&2
+            echo "       Set RPI_SUSPEND_ALLOW_UNVERIFIED=1 to override." >&2
+        else
+            echo "ERROR: rpi-suspend checksum mismatch." >&2
+            echo "       expected ${EXPECTED_DIGEST}" >&2
+            echo "       actual   ${ACTUAL_DIGEST}" >&2
+            RPI_SUSPEND_CHECKSUM_FAILED=true
+        fi
+
+        if [ "${DOWNLOAD_OK}" = true ]; then
+            VER=$(dpkg-deb -f "${TMP_DEB}" Version 2>/dev/null || echo "latest")
+            ARCH=$(dpkg-deb -f "${TMP_DEB}" Architecture 2>/dev/null || echo "all")
+            mv -f "${TMP_DEB}" "${DIST_DIR}/rpi-suspend_${VER}_${ARCH}.deb"
+            RPI_SUSPEND_SYNCED=true
+            echo "Downloaded rpi-suspend (${VER} [${ARCH}]) successfully."
+        else
+            rm -f "${TMP_DEB}"
+        fi
     else
         rm -f "${TMP_DEB}"
     fi
 fi
 
 # 3. Fallback: Check if already present in parent / Downloads
-if [ "${RPI_SUSPEND_SYNCED}" = false ]; then
+if [ "${RPI_SUSPEND_SYNCED}" = false ] && [ "${RPI_SUSPEND_CHECKSUM_FAILED}" = false ]; then
     if [ -f "${REPO_DIR}/../rpi-suspend.deb" ]; then
         cp -f "${REPO_DIR}/../rpi-suspend.deb" "${DIST_DIR}/"
-        echo "Used fallback rpi-suspend.deb from ../rpi-suspend.deb."
+        echo "Used unverified fallback rpi-suspend.deb from ../rpi-suspend.deb."
         RPI_SUSPEND_SYNCED=true
     fi
 fi

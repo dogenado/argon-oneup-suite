@@ -177,6 +177,8 @@ cd argon-oneup-suite
 
 * Core packages are generated in `dist/*.deb`.
 * Optional desktop widgets and standby managers are generated in `dist/extras/*.deb`.
+* `build_packages.sh` verifies the SHA256 digest of the downloaded `rpi-suspend` release through the GitHub API. If the digest cannot be retrieved, the download is refused unless `RPI_SUSPEND_ALLOW_UNVERIFIED=1` is set; a local `../rpi-suspend` build or `../rpi-suspend.deb` is used as fallback.
+* CI signing and APT deployment only run for non-PR `main`/tag events. A fork can publish by setting the `DEPLOY_APT=true` repository variable, the `APT_GPG_PRIVATE_KEY` secret, and optionally the `GPG_KEY_ID` repository variable.
 
 ---
 

@@ -5,24 +5,43 @@ set -e
 
 SRC_DIR="/usr/src/rpi-vc4-edp"
 OVERLAY_SRC="/usr/share/rpi-vc4-edp/overlays/argon-oneup-display.dtbo"
-CONFIG_TXT="/boot/firmware/config.txt"
-OVERLAYS_DIR="/boot/firmware/overlays"
+
+BOOT_DIR=""
+for d in /boot/firmware /boot; do
+    if [ -d "$d/overlays" ] || [ -f "$d/config.txt" ]; then
+        BOOT_DIR="$d"
+        break
+    fi
+done
+CONFIG_TXT="${BOOT_DIR:+${BOOT_DIR}/config.txt}"
+OVERLAYS_DIR="${BOOT_DIR:+${BOOT_DIR}/overlays}"
 
 log() {
     echo "[rpi-vc4-edp] $*"
 }
 
+append_line() {
+    file="$1"
+    line="$2"
+    [ -f "$file" ] || return 0
+    if [ -s "$file" ]; then
+        last_byte=$(tail -c 1 "$file" 2>/dev/null | od -An -t u1 | tr -d ' \n')
+        [ "$last_byte" = "10" ] || printf '\n' >> "$file"
+    fi
+    printf '%s\n' "$line" >> "$file"
+}
+
 ensure_overlay() {
-    if [ -d "$OVERLAYS_DIR" ] && [ -f "$OVERLAY_SRC" ]; then
+    if [ -n "$OVERLAYS_DIR" ] && [ -d "$OVERLAYS_DIR" ] && [ -f "$OVERLAY_SRC" ]; then
         if ! cmp -s "$OVERLAY_SRC" "$OVERLAYS_DIR/argon-oneup-display.dtbo"; then
             cp "$OVERLAY_SRC" "$OVERLAYS_DIR/argon-oneup-display.dtbo"
             log "Installed argon-oneup-display.dtbo to $OVERLAYS_DIR"
         fi
     fi
 
-    if [ -f "$CONFIG_TXT" ]; then
-        if ! grep -q "^dtoverlay=argon-oneup-display" "$CONFIG_TXT"; then
-            echo "dtoverlay=argon-oneup-display" >> "$CONFIG_TXT"
+    if [ -n "$CONFIG_TXT" ] && [ -f "$CONFIG_TXT" ]; then
+        if ! grep -q "^[[:space:]]*dtoverlay=argon-oneup-display" "$CONFIG_TXT"; then
+            append_line "$CONFIG_TXT" "dtoverlay=argon-oneup-display"
             log "Added dtoverlay=argon-oneup-display to $CONFIG_TXT"
         fi
     fi
@@ -137,8 +156,9 @@ show_status() {
         echo "Internal Display:  Not detected in sysfs"
     fi
 
-    if [ -f "$CONFIG_TXT" ] && grep -q "^dtoverlay=argon-oneup-display" "$CONFIG_TXT"; then
-        echo "Device Tree:       argon-oneup-display overlay active in config.txt"
+    if [ -n "$CONFIG_TXT" ] && [ -f "$CONFIG_TXT" ] && \
+       grep -q "^[[:space:]]*dtoverlay=argon-oneup-display" "$CONFIG_TXT"; then
+        echo "Device Tree:       argon-oneup-display overlay active in $(basename "$CONFIG_TXT")"
     else
         echo "Device Tree:       argon-oneup-display overlay NOT active in config.txt"
     fi

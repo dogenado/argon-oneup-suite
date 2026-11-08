@@ -27,8 +27,21 @@ fi
 
 remove_block() {
     if [ -n "$BOOT_CFG" ] && [ -f "$BOOT_CFG" ]; then
-        sed -i '/^# --- BEGIN ARGON-ONEUP-ESSENTIALS ---$/,/^# --- END ARGON-ONEUP-ESSENTIALS ---$/d' "$BOOT_CFG" 2>/dev/null || true
+        # Only delete the block when both markers are present. A missing END
+        # marker would otherwise make sed delete everything to EOF.
+        if grep -q '^# --- BEGIN ARGON-ONEUP-ESSENTIALS ---$' "$BOOT_CFG" &&
+           grep -q '^# --- END ARGON-ONEUP-ESSENTIALS ---$' "$BOOT_CFG"; then
+            sed -i '/^# --- BEGIN ARGON-ONEUP-ESSENTIALS ---$/,/^# --- END ARGON-ONEUP-ESSENTIALS ---$/d' "$BOOT_CFG" 2>/dev/null || true
+        fi
     fi
+}
+
+ensure_trailing_newline() {
+    file="$1"
+    [ -f "$file" ] || return 0
+    [ -s "$file" ] || return 0
+    last_byte=$(tail -c 1 "$file" 2>/dev/null | od -An -t u1 | tr -d ' \n')
+    [ "$last_byte" = "10" ] || printf '\n' >> "$file"
 }
 
 cleanup_obsolete_configs() {
@@ -75,6 +88,7 @@ if [ -n "$BOOT_CFG" ] && [ -f "$BOOT_CFG" ]; then
     fi
 
     remove_block
+    ensure_trailing_newline "$BOOT_CFG"
 
     {
         echo "# --- BEGIN ARGON-ONEUP-ESSENTIALS ---"

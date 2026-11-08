@@ -44,9 +44,13 @@ apt-ftparchive \
 
 # 5. Sign Release if GPG key is present
 if [ -n "${GPG_KEY_ID:-}" ] || gpg --list-secret-keys "Argon ONE UP" >/dev/null 2>&1; then
+    SIGN_ARGS=()
+    if [ -n "${GPG_KEY_ID:-}" ]; then
+        SIGN_ARGS=(--local-user "${GPG_KEY_ID}")
+    fi
     echo "Signing Release with GPG (SHA-512)..."
-    gpg --batch --yes --digest-algo SHA512 --armor --detach-sign -o dists/stable/Release.gpg dists/stable/Release
-    gpg --batch --yes --digest-algo SHA512 --clearsign -o dists/stable/InRelease dists/stable/Release
+    gpg --batch --yes "${SIGN_ARGS[@]}" --digest-algo SHA512 --armor --detach-sign -o dists/stable/Release.gpg dists/stable/Release
+    gpg --batch --yes "${SIGN_ARGS[@]}" --digest-algo SHA512 --clearsign -o dists/stable/InRelease dists/stable/Release
     echo "Release signed successfully (Release.gpg and InRelease created)."
 else
     echo "WARNING: No GPG signing key found in environment, repository will be unsigned."

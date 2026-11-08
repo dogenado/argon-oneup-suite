@@ -3,7 +3,14 @@ set -e
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     if [ -x /usr/bin/rpi-vc4-edp ]; then
-        /usr/bin/rpi-vc4-edp restore "$(uname -r)" || true
+        # Restore every installed kernel that has a backup, not just the
+        # currently running one. The per-kernel .orig files live under
+        # /lib/modules/<version>/ and can otherwise survive package removal.
+        for kdir in /lib/modules/*; do
+            [ -d "$kdir" ] || continue
+            kver=$(basename "$kdir")
+            /usr/bin/rpi-vc4-edp restore "$kver" 2>/dev/null || true
+        done
     fi
 fi
 

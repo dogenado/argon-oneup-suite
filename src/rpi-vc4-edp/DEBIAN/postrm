@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # The overlay and the config.txt line are not dpkg-managed files: the
+    # postinst copies them into /boot. Remove both on uninstall.
+    for cfg in /boot/firmware/config.txt /boot/config.txt; do
+        [ -f "$cfg" ] || continue
+        sed -i '/^[[:space:]]*dtoverlay=argon-oneup-display/d' "$cfg" 2>/dev/null || true
+    done
+
+    rm -f /boot/firmware/overlays/argon-oneup-display.dtbo \
+          /boot/overlays/argon-oneup-display.dtbo 2>/dev/null || true
+fi
+
+exit 0
