@@ -1,0 +1,32 @@
+Architectures: all arm64
+Codename: stable
+Components: main
+Date: Tue, 10 Nov 2026 01:31:23 +0000
+Description: Argon ONE UP Debian Package Repository
+Label: Argon ONE UP Suite
+Origin: Argon ONE UP
+Suite: stable
+MD5Sum:
+ 151a98483f8c3a0c58c54c64283aa2d9              210 Release
+ f944b3484c5df95f6dd8be7434a71505            13570 main/binary-all/Packages
+ f92cbdebb5b6b1492129b682bcd2251b             4989 main/binary-all/Packages.gz
+ 0c2079ed547e00bc0fada581d62f238f            16675 main/binary-arm64/Packages
+ 20b303939f18fd442f713dd09751da3c             6004 main/binary-arm64/Packages.gz
+SHA1:
+ 1974d1afd10478696451c2ba16f9c021dbc6fe22              210 Release
+ f516baa303f321711db9282d0dad89d85679480f            13570 main/binary-all/Packages
+ 656a3b80f718c4d6749c315898e6656b074fd594             4989 main/binary-all/Packages.gz
+ aef8005935617038f774db0b7f60e61b31e1ea7b            16675 main/binary-arm64/Packages
+ f9b625500d9756aa4605c607156d5b912040e6e6             6004 main/binary-arm64/Packages.gz
+SHA256:
+ 9ed59a5164378b03140d63cf09f451becb689e6b709dea1b2a5e134abae540ce              210 Release
+ 829a104295792b6f2cba49ccf210d5ab2a8e7540f4e627af252b411d2b20c197            13570 main/binary-all/Packages
+ d9d0da58ffd211ce6b45993593dc9f65332e91b0ef94743d54aec313f198d449             4989 main/binary-all/Packages.gz
+ f3e242d39db3e7d7201fd325e813eb2189023f703cd40bbd5b22c9b4278ecde9            16675 main/binary-arm64/Packages
+ dc457c1dca0de3cd1804f148357563d837b437160174337834763a5300dfa061             6004 main/binary-arm64/Packages.gz
+SHA512:
+ f2bd026935b08139b4385d9797b35277fe7874b85f4658b0a9c45a13e000bc9324cbe74fde5be5df4b44d15e4ebc4d053b839af4ada5495dc9497af43078acca              210 Release
+ 9c1cfd7a0da16a2aeb37ea89b958b8619086ddf1e380a50a96549f6b3f8f9ff2466ad2b7cfacf0431f33376375f74cf0da780725af186b79886d18faca1a2fc9            13570 main/binary-all/Packages
+ 267649bc8ecccd6173b207048e0c61a7d317bcefe8df488f7e3bf58f1230c47e0d52332f3a0acb6cda1662d88d669d69211e312308d96863e29006c0ba828a20             4989 main/binary-all/Packages.gz
+ b0cb59cab382bcc4babd0f5ffa473d0b4012d52bb838f83e9261bbf4c414b78054859ecd1d0136bc119db83bd25fd6e698e5b97167c0cb72fb686bc85ec152b2            16675 main/binary-arm64/Packages
+ e3226a418eef0e562713f994935609faa97f698ad5838660a25284b1a74cbdcaf381f1bc24eb7e58b6c732cc10238439829bbccfe542fef5d29abd44e1b30a3f             6004 main/binary-arm64/Packages.gz
